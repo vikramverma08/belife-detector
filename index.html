@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BeLife · Multi-Center Report Duplicate Detector (Google Drive)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<!-- Google Identity Services + Drive API -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
+<style>
+  :root{
+    --navy:#0E1B2A; --navy-2:#16293D; --panel:#FFFFFF; --ink:#16293D; --mute:#5B7088;
+    --line:#E2E9F0; --cyan:#00B4CC; --cyan-d:#0793A8; --teal-bg:#F1F7F9;
+    --amber:#E8870C; --amber-bg:#FCF1E1; --red:#D7263D; --red-bg:#FBE9EC;
+    --green:#1F9D6B; --green-bg:#E7F5EE; --purple:#6C5CE7;
+    --shadow:0 1px 3px rgba(14,27,42,.08),0 8px 24px rgba(14,27,42,.06);
+    --mono:'SFMono-Regular',ui-monospace,'JetBrains Mono',Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#EEF3F7;color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5}
+  button{font-family:inherit;cursor:pointer}
+  .wrap{max-width:1320px;margin:0 auto;padding:0 22px 80px}
+
+  header{background:linear-gradient(160deg,var(--navy) 0%,var(--navy-2) 100%);color:#fff;
+    padding:18px 0 20px;border-bottom:3px solid var(--cyan)}
+  .hbar{max-width:1320px;margin:0 auto;padding:0 22px;display:flex;align-items:center;gap:16px}
+  .logo{display:flex;align-items:center;gap:11px}
+  .mark{width:38px;height:38px;border-radius:9px;background:var(--cyan);display:grid;place-items:center;
+    font-weight:800;color:var(--navy);font-size:19px;letter-spacing:-1px}
+  .logo h1{font-size:16px;margin:0;font-weight:700;letter-spacing:-.2px}
+  .logo p{margin:1px 0 0;font-size:11px;color:#9DB6CC;letter-spacing:.3px}
+  .hright{margin-left:auto;display:flex;align-items:center;gap:14px}
+  .dc-badge{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:9px;
+    padding:7px 13px;font-size:12.5px;display:none;align-items:center;gap:8px}
+  .dc-badge b{color:#fff} .dc-badge.show{display:flex}
+  .dc-dot{width:8px;height:8px;border-radius:50%;background:var(--cyan)}
+  .gbtn{display:flex;align-items:center;gap:8px;background:#fff;color:#3c4043;border:1px solid #dadce0;
+    border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600}
+  .gbtn:hover{background:#f8f9fa;box-shadow:0 1px 3px rgba(60,64,67,.2)}
+  .gbtn img{width:17px;height:17px}
+  .gsignout{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);
+    border-radius:8px;padding:7px 12px;font-size:12px;display:none}
+  .gsignout.show{display:inline-block}
+  .uemail{font-size:11.5px;color:#9DB6CC;display:none} .uemail.show{display:inline}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+  .btn{background:var(--cyan);color:#062b31;border:none;padding:10px 18px;border-radius:9px;font-weight:700;
+    font-size:13.5px;transition:.15s}
+  .btn:hover{background:var(--cyan-d);color:#fff}
+  .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+  .btn.ghost:hover{border-color:var(--cyan);color:var(--cyan-d)}
+  .btn.sm{padding:6px 12px;font-size:12px;border-radius:7px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+
+  /* ---- Setup / config gate ---- */
+  .setup{margin-top:22px;padding:26px}
+  .setup h2{margin:0 0 6px;font-size:19px}
+  .setup .lead{color:var(--mute);font-size:13.5px;margin-bottom:18px}
+  .steps{display:grid;gap:0;counter-reset:s}
+  .step{display:flex;gap:14px;padding:14px 0;border-top:1px solid var(--line)}
+  .step:first-child{border-top:none}
+  .step .n{counter-increment:s;width:26px;height:26px;border-radius:50%;background:var(--navy);color:#fff;
+    display:grid;place-items:center;font-size:13px;font-weight:700;flex-shrink:0}
+  .step .n::before{content:counter(s)}
+  .step .b{flex:1}
+  .step h4{margin:0 0 3px;font-size:14px}
+  .step p{margin:0;font-size:12.5px;color:var(--mute);line-height:1.55}
+  .step code{background:#F1F5F9;padding:1px 6px;border-radius:4px;font-family:var(--mono);font-size:11.5px}
+  .step a{color:var(--cyan-d);font-weight:600;text-decoration:none}
+  .cfg-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .cfg-row input{flex:1;min-width:240px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;
+    font-size:13px;font-family:var(--mono)}
+  .note{font-size:12px;color:var(--mute);background:var(--teal-bg);border:1px solid #D4E6EA;border-radius:10px;
+    padding:11px 14px;margin-top:16px;line-height:1.55}
+  .note b{color:var(--cyan-d)}
+  .warnbox{font-size:12.5px;background:var(--amber-bg);border:1px solid #F0D6A8;border-radius:10px;
+    padding:11px 14px;margin-top:12px;color:#7A4E08;line-height:1.55}
+
+  /* ---- DC picker ---- */
+  .dc-stage{margin-top:22px}
+  .dc-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .dc-head h2{margin:0;font-size:18px} .dc-head .sub{color:var(--mute);font-size:13px}
+  .dc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+  .dc-card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:16px 17px;cursor:pointer;
+    transition:.15s;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .dc-card:hover{border-color:var(--cyan);transform:translateY(-2px)}
+  .dc-card .ic{width:40px;height:40px;border-radius:10px;background:var(--teal-bg);display:grid;place-items:center;
+    font-size:20px;margin-bottom:10px}
+  .dc-card h3{margin:0 0 3px;font-size:15.5px}
+  .dc-card .meta{font-size:12px;color:var(--mute)}
+  .dc-card .cached{position:absolute;top:12px;right:12px;font-size:10px;font-weight:700;color:var(--green);
+    background:var(--green-bg);padding:3px 8px;border-radius:12px}
+  .dc-card.add{border-style:dashed;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;color:var(--mute);min-height:120px}
+  .dc-card.add .ic{background:transparent}
+  .refresh-row{margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+  /* ---- Build progress ---- */
+  #buildPanel{display:none;margin-top:18px;padding:18px 20px}
+  .prog{height:8px;background:#EEF3F7;border-radius:6px;overflow:hidden;margin:10px 0}
+  .prog .bar{height:100%;background:var(--cyan);width:0%;transition:width .3s}
+  #buildLog{font-family:var(--mono);font-size:12px;color:var(--mute);max-height:180px;overflow:auto;margin-top:8px}
+  #buildLog .ok{color:#1F9D6B} #buildLog .hi{color:var(--cyan-d)} #buildLog .warn{color:var(--amber)}
+
+  /* ---- App (detection + analytics) ---- */
+  #app{display:none}
+  .viewtabs{display:flex;gap:6px;margin-top:20px;background:#fff;border:1px solid var(--line);
+    border-radius:12px;padding:5px;box-shadow:var(--shadow)}
+  .viewtabs button{flex:1;border:none;background:transparent;padding:11px 14px;border-radius:9px;
+    font-size:14px;font-weight:700;color:var(--mute)}
+  .viewtabs button.on{background:var(--navy);color:#fff}
+  .backbtn{background:none;border:none;color:var(--cyan-d);font-weight:600;font-size:13px;padding:0;margin-top:18px}
+
+  .stage{margin-top:18px;display:grid;gap:18px}
+  .drop{padding:30px;text-align:center;border:2px dashed #C4D3E0;border-radius:14px;background:#fff;transition:.18s;cursor:pointer}
+  .drop.hot{border-color:var(--cyan);background:var(--teal-bg)}
+  .drop .ic{font-size:32px} .drop h2{margin:8px 0 4px;font-size:17px} .drop p{margin:0;color:var(--mute);font-size:13px}
+  .drop .or{margin-top:12px;font-size:12px;color:var(--mute)}
+  .pdfprev{margin-top:10px;font-size:12px} .pdfprev a{color:var(--cyan-d);font-weight:600;text-decoration:none}
+  #proc{display:none;padding:16px 18px;font-family:var(--mono);font-size:12px;color:var(--mute);
+    background:var(--navy);border-radius:12px;max-height:200px;overflow:auto}
+  #proc .ok{color:#5FD0A6} #proc .warn{color:#F2B45A} #proc .hi{color:#6CD6E6} #proc .drv{color:#A99CF5}
+
+  .tiles{display:none;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px}
+  .tiles.show{display:grid}
+  .tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:15px 16px;border-left:4px solid var(--line)}
+  .tile.hi{border-left-color:var(--red)} .tile.med{border-left-color:var(--amber)}
+  .tile.cl{border-left-color:var(--green)} .tile.tot{border-left-color:var(--cyan)}
+  .tile b{font-size:25px;font-weight:750;font-variant-numeric:tabular-nums;display:block}
+  .tile span{font-size:11.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.5px}
+
+  .toolbar{display:none;margin-top:18px;gap:10px;flex-wrap:wrap;align-items:center}
+  .toolbar.show{display:flex}
+  .seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#fff}
+  .seg button{border:none;background:#fff;padding:8px 13px;font-size:12.5px;font-weight:600;color:var(--mute)}
+  .seg button.on{background:var(--navy);color:#fff}
+  .search{flex:1;min-width:200px;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:9px;padding:0 12px}
+  .search input{border:none;outline:none;padding:9px 0;width:100%;font-size:13.5px;background:transparent}
+  select.flt{border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:12.5px;background:#fff;color:var(--ink)}
+
+  #results{margin-top:18px;display:flex;flex-direction:column;gap:14px}
+  .match{background:#fff;border:1px solid var(--line);border-radius:13px;overflow:hidden;box-shadow:var(--shadow)}
+  .mhead{display:flex;align-items:center;gap:14px;padding:14px 18px;cursor:pointer;user-select:none}
+  .mhead:hover{background:#FAFCFD}
+  .sevtag{font-size:10.5px;font-weight:800;padding:4px 9px;border-radius:20px;letter-spacing:.5px;white-space:nowrap}
+  .sev-HIGH{background:var(--red-bg);color:var(--red)} .sev-MEDIUM{background:var(--amber-bg);color:var(--amber)}
+  .mtitle{font-weight:700;font-size:15px} .msub{color:var(--mute);font-size:12.5px;margin-top:1px}
+  .mmeta{margin-left:auto;display:flex;gap:20px;align-items:center;text-align:right}
+  .mmeta .k b{font-size:16px;font-variant-numeric:tabular-nums;display:block}
+  .mmeta .k span{font-size:10px;color:var(--mute);text-transform:uppercase;letter-spacing:.5px}
+  .status-pill{font-size:11px;font-weight:700;padding:4px 10px;border-radius:7px}
+  .st-pending{background:#EEF3F7;color:var(--mute)} .st-approved{background:var(--green-bg);color:var(--green)} .st-rejected{background:var(--red-bg);color:var(--red)}
+  .chev{color:var(--mute);transition:.2s;font-size:13px} .match.open .chev{transform:rotate(90deg)}
+  .mbody{display:none;border-top:1px solid var(--line)} .match.open .mbody{display:block}
+  .cmp{display:grid;grid-template-columns:1fr 1fr}
+  .cmp .col{padding:15px 18px} .cmp .col:first-child{border-right:1px solid var(--line);background:var(--teal-bg)}
+  .col h4{margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--mute)}
+  .col .pn{font-weight:700;font-size:14px} .col .pmeta{font-size:12px;color:var(--mute);margin-top:2px}
+  table.pt{width:100%;border-collapse:collapse;margin-top:8px}
+  table.pt th{text-align:left;font-size:10.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:1px solid var(--line)}
+  table.pt td{padding:6px 8px;font-size:13px;border-bottom:1px solid #EEF3F7;font-variant-numeric:tabular-nums}
+  table.pt tr.mt td{font-weight:600}
+  .vmatch{color:var(--green);font-weight:700}
+  .bits{font-family:var(--mono);font-size:11px;color:var(--cyan-d);background:var(--teal-bg);padding:1px 6px;border-radius:5px}
+  .strong-dot{color:var(--amber)}
+  .actions{padding:13px 18px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center;background:#FAFCFD}
+  .actions .sp{flex:1}
+  .btn.ok{background:var(--green);color:#fff} .btn.ok:hover{background:#178255}
+  .btn.no{background:#fff;border:1px solid var(--red);color:var(--red)} .btn.no:hover{background:var(--red);color:#fff}
+  .remark{display:none;margin:0 18px 14px;padding:12px 14px;background:var(--red-bg);border-radius:10px}
+  .remark.show{display:block}
+  .remark textarea{width:100%;border:1px solid #E6B9C2;border-radius:8px;padding:8px;font-family:inherit;font-size:13px;resize:vertical;min-height:54px}
+  .empty{text-align:center;padding:50px 20px;color:var(--mute)} .empty .ic{font-size:38px;opacity:.5}
+  .loadmore{text-align:center;margin-top:6px}
+
+  .common-panel{margin-top:14px;border:1px solid var(--line);border-radius:13px;background:#fff;padding:16px 18px;box-shadow:var(--shadow)}
+  .common-panel h3{margin:0 0 4px;font-size:15px} .common-panel .csub{font-size:12.5px;color:var(--mute);margin-bottom:12px}
+  .cp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px}
+  .cp-item{border:1px solid var(--line);border-radius:9px;padding:9px 11px}
+  .cp-item.hot{border-color:var(--amber);background:var(--amber-bg)} .cp-item.veryhot{border-color:var(--red);background:var(--red-bg)}
+  .cp-item .pp{font-size:11.5px;color:var(--mute)} .cp-item .vv{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+  .cp-item .ff{font-size:11px;margin-top:2px} .cp-item .ff b{color:var(--cyan-d)}
+  .cp-item.hot .ff b{color:var(--amber)} .cp-item.veryhot .ff b{color:var(--red)}
+
+  /* analytics */
+  .an-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px}
+  .an-card{margin-top:16px;padding:18px}
+  .an-h{display:flex;align-items:baseline;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+  .an-h h3{margin:0;font-size:15.5px} .an-sub{font-size:12px;color:var(--mute)}
+  .an-row{display:grid;grid-template-columns:1.15fr .85fr;gap:16px}
+  @media(max-width:900px){.an-row{grid-template-columns:1fr}}
+  .chart-wrap{position:relative;height:320px} .chart-wrap.tall{height:360px}
+  .an-scroll{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+  table.an-tbl{width:100%;border-collapse:collapse;font-size:13px}
+  table.an-tbl th{position:sticky;top:0;background:#F6F9FB;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--mute);padding:9px 12px;border-bottom:1px solid var(--line);z-index:1}
+  table.an-tbl td{padding:8px 12px;border-bottom:1px solid #EEF3F7;font-variant-numeric:tabular-nums}
+  table.an-tbl tr:hover td{background:#FAFCFD}
+  .pct-bar{display:inline-block;height:7px;border-radius:4px;background:var(--cyan);vertical-align:middle;margin-right:7px}
+  .mini-month{font-size:10.5px;color:var(--mute);font-family:var(--mono)}
+  .vchip{font-family:var(--mono);font-weight:700;background:var(--teal-bg);color:var(--cyan-d);padding:1px 7px;border-radius:5px}
+  .alert-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:11px}
+  .alert{border:1px solid var(--line);border-radius:11px;padding:12px 14px;border-left:4px solid var(--amber)}
+  .alert.HIGH{border-left-color:var(--red);background:var(--red-bg)} .alert.MED{border-left-color:var(--amber);background:var(--amber-bg)} .alert.LOW{border-left-color:var(--cyan)}
+  .alert .pn{font-size:13px;font-weight:700} .alert .bigv{font-size:22px;font-weight:750;font-variant-numeric:tabular-nums;margin:3px 0}
+  .alert .meta{font-size:11.5px;color:var(--mute)} .alert .sevb{font-size:9.5px;font-weight:800;letter-spacing:.5px;padding:2px 7px;border-radius:12px;float:right}
+  .alert.HIGH .sevb{background:var(--red);color:#fff} .alert.MED .sevb{background:var(--amber);color:#fff} .alert.LOW .sevb{background:var(--cyan);color:#062b31}
+  #heatmap{padding:6px} .hm-row{display:flex;align-items:center;gap:2px;margin-bottom:2px}
+  .hm-lab{width:130px;font-size:11.5px;font-weight:600;flex-shrink:0;text-align:right;padding-right:8px}
+  .hm-cell{width:46px;height:30px;flex-shrink:0;border-radius:3px;display:grid;place-items:center;font-size:10px;color:#fff;font-variant-numeric:tabular-nums}
+  .hm-cell.lite{color:var(--ink)} .hm-head{display:flex;gap:2px;margin:0 0 4px 130px}
+  .hm-hcell{width:46px;font-size:9.5px;color:var(--mute);text-align:center;font-family:var(--mono)}
+
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;
+    padding:12px 20px;border-radius:10px;font-size:13.5px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:999;display:none}
+  .toast.show{display:block}
+  .spin{display:inline-block;width:18px;height:18px;border:3px solid var(--line);border-top-color:var(--cyan);border-radius:50%;animation:sp .8s linear infinite;vertical-align:middle}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media(max-width:760px){.cmp{grid-template-columns:1fr}.cmp .col:first-child{border-right:none;border-bottom:1px solid var(--line)}
+    .tiles{grid-template-columns:repeat(2,1fr)}.mmeta{gap:12px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="hbar">
+    <div class="logo">
+      <div class="mark">B</div>
+      <div><h1>Multi-Center Report Duplicate Detector</h1>
+      <p>BeLife Diagnostics · per-center databases on Google Drive</p></div>
+    </div>
+    <div class="hright">
+      <div class="dc-badge" id="dcBadge"><span class="dc-dot"></span><span>Center: <b id="dcBadgeName">—</b></span></div>
+      <span class="uemail" id="uEmail"></span>
+      <button class="gbtn" id="gSignin">
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="">
+        Sign in with Google</button>
+      <button class="gsignout" id="gSignout">Sign out</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ============ SETUP GATE (needs OAuth client id) ============ -->
+  <div class="card setup" id="setupCard">
+    <h2>One-time setup</h2>
+    <div class="lead">This tool reads each diagnostics center's data from its own Google Drive folder and writes
+      checked reports back there. To talk to Google Drive from the browser, it needs your Google OAuth
+      credentials (created once, free).</div>
+
+    <div class="steps">
+      <div class="step"><div class="n"></div><div class="b">
+        <h4>Create a Google Cloud project &amp; OAuth Client ID</h4>
+        <p>Open the <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console → Credentials</a>.
+        Create project → <b>Create Credentials → OAuth client ID → Web application</b>.
+        Under <b>Authorized JavaScript origins</b> add the exact URL this page is served from
+        (e.g. <code>http://localhost:8000</code> or your hosting URL). Copy the <b>Client ID</b>.</p>
+      </div></div>
+      <div class="step"><div class="n"></div><div class="b">
+        <h4>Enable the Google Drive API &amp; Picker API</h4>
+        <p>In <a href="https://console.cloud.google.com/apis/library" target="_blank">APIs &amp; Services → Library</a>,
+        enable <b>Google Drive API</b> and <b>Google Picker API</b>. Then create an <b>API key</b>
+        (Create Credentials → API key) and copy it.</p>
+      </div></div>
+      <div class="step"><div class="n"></div><div class="b">
+        <h4>Paste them here (saved only in this browser)</h4>
+        <div class="cfg-row">
+          <input id="cfgClient" placeholder="OAuth Client ID  (….apps.googleusercontent.com)">
+          <input id="cfgApiKey" placeholder="API key  (AIza….)">
+        </div>
+        <div class="cfg-row">
+          <button class="btn" id="cfgSave">Save &amp; continue</button>
+          <button class="btn ghost" id="cfgClear">Clear saved keys</button>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="warnbox">
+      <b>Why sign-in every session?</b> A browser page cannot access Google Drive without a user explicitly
+      granting permission — this is Google's security model. You'll click “Sign in with Google” once per session.
+      The app requests the <code>drive.file</code> scope, meaning it can only see and modify files it creates or
+      that you open with it — never your whole Drive.
+    </div>
+    <div class="note">
+      All processing (parsing, duplicate matching, analytics) happens <b>in your browser</b>. Patient data is
+      never sent to any third-party server — only to/from <b>your own Google Drive</b>.
+    </div>
+  </div>
+
+  <!-- ============ DC PICKER ============ -->
+  <div class="dc-stage" id="dcStage" style="display:none">
+    <div class="dc-head">
+      <div><h2>Choose a diagnostics center</h2>
+      <div class="sub">Each center has its own Drive folder and its own isolated database. Reports are only checked against the same center's history.</div></div>
+    </div>
+    <div class="dc-grid" id="dcGrid"></div>
+    <div class="refresh-row">
+      <button class="btn ghost sm" id="addDcBtn">+ Add / link a center folder</button>
+      <span class="an-sub" id="dcHint"></span>
+    </div>
+  </div>
+
+  <!-- ============ BUILD PROGRESS ============ -->
+  <div class="card" id="buildPanel">
+    <h3 style="margin:0 0 4px" id="buildTitle">Building database…</h3>
+    <div class="an-sub" id="buildSub"></div>
+    <div class="prog"><div class="bar" id="buildBar"></div></div>
+    <div id="buildLog"></div>
+  </div>
+
+  <!-- ============ APP ============ -->
+  <div id="app">
+    <button class="backbtn" id="backToDc">← Switch center</button>
+    <div class="viewtabs" id="viewtabs">
+      <button data-view="detect" class="on">🔍 Duplicate Detection</button>
+      <button data-view="analytics">📊 Common Parameter &amp; Value Analytics</button>
+    </div>
+
+    <!-- DETECTION -->
+    <div id="view-detect">
+      <div class="stage">
+        <div class="drop" id="drop">
+          <div class="ic">🧪</div>
+          <h2>Upload a report PDF to check for duplicates</h2>
+          <p id="dropSub">Checked against this center's history, then saved into its Drive folder.</p>
+          <div class="or">drag &amp; drop, or</div>
+          <div style="margin-top:10px"><button class="btn" id="pickBtn">Choose PDF file</button>
+          <input type="file" id="pdfFile" accept="application/pdf" style="display:none"></div>
+          <div class="pdfprev" id="pdfPrev"></div>
+        </div>
+        <div id="proc"></div>
+      </div>
+
+      <div class="tiles" id="tiles">
+        <div class="tile tot"><b id="tTotal">0</b><span>Candidate matches</span></div>
+        <div class="tile hi"><b id="tHigh">0</b><span>High severity</span></div>
+        <div class="tile med"><b id="tMed">0</b><span>Medium severity</span></div>
+        <div class="tile cl"><b id="tApproved">0</b><span>Approved / cleared</span></div>
+      </div>
+
+      <div class="toolbar" id="toolbar">
+        <div class="seg" id="segSev">
+          <button data-sev="all" class="on">All</button><button data-sev="HIGH">High</button><button data-sev="MEDIUM">Medium</button>
+        </div>
+        <div class="seg" id="segStatus">
+          <button data-st="all" class="on">Any status</button><button data-st="pending">Pending</button>
+          <button data-st="approved">Approved</button><button data-st="rejected">Rejected</button>
+        </div>
+        <select class="flt" id="fltMonth"><option value="all">All months</option></select>
+        <select class="flt" id="fltParam"><option value="all">All parameters</option></select>
+        <div class="search">🔎<input id="searchBox" placeholder="Search patient or barcode…"></div>
+        <button class="btn ghost sm" id="exportBtn">⬇ Excel</button>
+        <button class="btn ghost sm" id="newBtn">+ New report</button>
+      </div>
+
+      <div id="results"></div>
+      <div class="loadmore" id="loadMore" style="display:none"><button class="btn ghost" id="loadMoreBtn">Show more matches</button></div>
+    </div>
+
+    <!-- ANALYTICS -->
+    <div id="view-analytics" style="display:none">
+      <div class="an-toolbar">
+        <div class="seg" id="anMonth"><button data-m="all" class="on">All months</button></div>
+        <select class="flt" id="anParam"><option value="all">All parameters</option></select>
+        <select class="flt" id="anType">
+          <option value="continuous" selected>Continuous only</option>
+          <option value="all">All value types</option>
+          <option value="discrete">Discrete / counts only</option>
+        </select>
+        <select class="flt" id="anTop"><option value="10">Top 10</option><option value="25" selected>Top 25</option><option value="50">Top 50</option></select>
+        <div class="search">🔎<input id="anValSearch" placeholder="Filter by value (e.g. 13.5)…"></div>
+        <button class="btn ghost sm" id="anExportXlsx">⬇ Excel</button>
+        <button class="btn ghost sm" id="anExportPdf">⬇ PDF</button>
+      </div>
+      <div class="card an-card">
+        <div class="an-h"><h3>⚠ High-Frequency Value Alerts</h3><span class="an-sub" id="anAlertsSub"></span></div>
+        <div id="anAlerts" class="alert-grid"></div>
+      </div>
+      <div class="an-row">
+        <div class="card an-card"><div class="an-h"><h3>Top 20 Most-Used Parameters</h3><span class="an-sub" id="anParamChartSub"></span></div>
+          <div class="chart-wrap"><canvas id="chartParams"></canvas></div></div>
+        <div class="card an-card"><div class="an-h"><h3>Parameter Usage</h3><span class="an-sub">count · % of reports</span></div>
+          <div class="an-scroll"><table class="an-tbl" id="tblParams"></table></div></div>
+      </div>
+      <div class="card an-card"><div class="an-h"><h3>Month-wise Value Trend</h3><span class="an-sub" id="anTrendSub"></span></div>
+        <div class="chart-wrap tall"><canvas id="chartTrend"></canvas></div></div>
+      <div class="card an-card"><div class="an-h"><h3>Most Repeated Values</h3><span class="an-sub" id="anValSub"></span></div>
+        <div class="an-scroll"><table class="an-tbl" id="tblValues"></table></div></div>
+      <div class="card an-card"><div class="an-h"><h3>Duplicate-Value Heatmap</h3>
+        <span class="an-sub">Darker = value repeats in a larger share of the parameter's reports</span></div>
+        <div class="an-scroll"><div id="heatmap"></div></div></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   BeLife Multi-Center Duplicate Detector — Google Drive edition
+   - per-DC isolated databases, built in-browser from Drive folders
+   - information-theoretic weighted matcher (same engine as single-DC)
+   - client-side analytics (replaces the Python build_master_db.py)
+   - Google OAuth (GIS) + Drive API for read/write
+   ============================================================ */
+const $=s=>document.querySelector(s);
+const $$=s=>Array.from(document.querySelectorAll(s));
+pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const fmt=v=>{const n=+v;return Number.isInteger(n)?String(n):String(v);};
+const r2=x=>Math.round(x*100)/100;
+const toNum=v=>{ if(v==null) return null; let s=String(v).trim().replace(/,/g,"");
+  if(!/^-?\d+(\.\d+)?$/.test(s)) return null; let n=parseFloat(s); return isFinite(n)?Math.round(n*10000)/10000:null; };
+
+/* ---- canonical parameter map (mirrors build_master_db.py) ---- */
+const CANON = {
+ "haemoglobin":"HB","hemoglobin":"HB","haemoglobin (hb)":"HB","hb":"HB","hb%":"HB",
+ "total leucocyte count":"TLC","total leukocyte count":"TLC","tlc":"TLC",
+ "rbc count":"RBC","rbc":"RBC","platelet count":"PLT","platelets":"PLT","platelet":"PLT",
+ "p.c.v/haematocrit":"PCV","pcv":"PCV","hct":"PCV","haematocrit":"PCV",
+ "mcv":"MCV","mch":"MCH","mchc":"MCHC","rdw-cv":"RDWCV","rdw-sd":"RDWSD",
+ "neutrophils":"NEUT","lymphocytes":"LYMPH","eosinophils":"EOS","monocytes":"MONO","basophils":"BASO",
+ "absolute neutrophils":"ABS_NEUT","absolute lymphocytes":"ABS_LYMPH","absolute eosinophils":"ABS_EOS",
+ "absolute eosinophils count":"ABS_EOS","absolute monocytes":"ABS_MONO","absolute basophils":"ABS_BASO",
+ "erythrocyte sedimentation rate (esr)":"ESR","mpv":"MPV","pdw":"PDW","pct":"PCT",
+ "sgot":"SGOT","sgot (ast)":"SGOT","sgot (ast) - serum":"SGOT","sgot (ast)- serum":"SGOT","ast":"SGOT",
+ "sgpt":"SGPT","sgpt (alt)":"SGPT","sgpt (alt) - serum":"SGPT","sgpt(alt) - serum":"SGPT","alt":"SGPT",
+ "gamma glutamyl transferase (ggt)":"GGT","gamma gt (ggt)":"GGT","gamma glutamyl transferase":"GGT",
+ "ggtp (ggt)":"GGT","ggt":"GGT","ggt / ggtp":"GGT",
+ "bilirubin total":"BIL_T","total bilirubin":"BIL_T","total":"BIL_T",
+ "bilirubin direct":"BIL_D","direct bilirubin":"BIL_D","direct":"BIL_D",
+ "bilirubin indirect":"BIL_I","indirect bilirubin":"BIL_I","indirect":"BIL_I",
+ "total proteins":"TPROT","albumin":"ALB","globulin":"GLOB",
+ "alkaline phosphatase":"ALP","alkaline phosphatase (alp)":"ALP",
+ "a : g ratio":"AG_RATIO","sgot/sgpt ratio":"SGOT_SGPT","sgot / sgpt ratio":"SGOT_SGPT",
+ "serum creatinine":"CREAT","creatinine":"CREAT","creatinine serum":"CREAT","s. creatinine":"CREAT","s.creatinine":"CREAT",
+ "urea":"UREA","urea serum":"UREA","blood urea":"UREA",
+ "blood urea nitrogen (bun)":"BUN","bun":"BUN","blood urea nitrogen":"BUN","blood urea nitrogen(bun)":"BUN",
+ "uric acid":"URIC","calcium":"CA","s.calcium(ica)":"CA","ionic calcium":"CA","serum calcium":"CA",
+ "phosphorus":"PHOS","sodium":"NA","s.sodium":"NA","serum sodium":"NA",
+ "potassium":"K","s. potassium":"K","serum potassium":"K",
+ "chloride":"CL","s.chloride":"CL","serum chloride":"CL",
+ "bun /  creatinine":"BUN_CREAT","bun/ creatinine":"BUN_CREAT","bun / creatinine":"BUN_CREAT",
+ "urea / creatinine":"UREA_CREAT","gfr by mdrd formula":"GFR","gfr":"GFR",
+ "total cholesterol":"CHOL","total cholestrol":"CHOL","cholesterol":"CHOL",
+ "triglycerides level":"TG","triglycerides":"TG","s. triglycerides":"TG","triglyceride":"TG",
+ "hdl cholesterol":"HDL","high density lipid (hdl)":"HDL","hdl":"HDL",
+ "ldl cholesterol":"LDL","low density lipid (ldl)":"LDL","ldl":"LDL",
+ "vldl cholesterol":"VLDL","vldl":"VLDL",
+ "total cholesterol/hdl ratio":"CHOL_HDL","total chole8terol/hdl ratio":"CHOL_HDL",
+ "ldl/hdl ratio":"LDL_HDL",
+ "blood sugar fasting":"FBS","bloood sugar fasting":"FBS","plasma glucose fasting":"FBS",
+ "fasting blood sugar method god pod":"FBS","blood sugar (fasting)":"FBS","fasting blood sugar":"FBS",
+ "blood sugar post prandial":"PPBS","post-prandial plasma glucose (pp)":"PPBS","blood sugar (pp)":"PPBS",
+ "blood sugar random":"RBS","blood sugar (random)":"RBS","random blood sugar":"RBS",
+ "hba1c":"HBA1C","hba1c / glycosylated":"HBA1C","a1c":"HBA1C","glycosylated":"HBA1C","glycosylated haemoglobin":"HBA1C",
+ "estimated average glucose":"EAG",
+ "t3":"T3","t4":"T4","thyroid stimulating hormone(tsh)-serum":"TSH","tsh(serum)":"TSH","tsh":"TSH",
+ "thyroid-stimulating hormone, tsh":"TSH","ultrasensitive tsh":"TSH",
+ "ft3-triiodothyronine free":"FT3","free triiodothyronine l, ft3":"FT3","ft3":"FT3",
+ "ft4 (thyroxine)-serum":"FT4","free thyroxine, ft4":"FT4","ft4":"FT4",
+ "vitamin b12":"B12","b12":"B12","serum vitamin d3":"VITD","vitamin d3":"VITD","25 hydroxy (oh) vit d":"VITD",
+ "vitamin d":"VITD","vitamin d- total (25-oh-vit d)- serum":"VITD",
+ "serum iron":"IRON","iron serum":"IRON","total iron binding capacity":"TIBC","tibc":"TIBC",
+ "transferrin saturation":"TSAT","ferritin":"FERR",
+ "high sensitive crp (hscrp)":"HSCRP","c - reactive protein (crp)":"CRP","c- reactive protein (crp)":"CRP","crp":"CRP",
+ "total psa":"PSA","psa (prostate specific antigen)-serum":"PSA",
+ "amylase-serum":"AMYLASE","serum-lipase":"LIPASE","prolactin":"PROLACTIN","prolactin-serum":"PROLACTIN"
+};
+const DISPLAY = {
+ HB:"Hemoglobin",TLC:"Total Leucocyte Count",RBC:"RBC Count",PLT:"Platelet Count",PCV:"PCV / Haematocrit",
+ MCV:"MCV",MCH:"MCH",MCHC:"MCHC",RDWCV:"RDW-CV",RDWSD:"RDW-SD",NEUT:"Neutrophils",LYMPH:"Lymphocytes",
+ EOS:"Eosinophils",MONO:"Monocytes",BASO:"Basophils",ABS_NEUT:"Absolute Neutrophils",ABS_LYMPH:"Absolute Lymphocytes",
+ ABS_EOS:"Absolute Eosinophils",ABS_MONO:"Absolute Monocytes",ABS_BASO:"Absolute Basophils",ESR:"ESR",MPV:"MPV",
+ PDW:"PDW",PCT:"PCT",SGOT:"SGOT (AST)",SGPT:"SGPT (ALT)",GGT:"GGT",BIL_T:"Bilirubin Total",BIL_D:"Bilirubin Direct",
+ BIL_I:"Bilirubin Indirect",TPROT:"Total Proteins",ALB:"Albumin",GLOB:"Globulin",ALP:"Alkaline Phosphatase",
+ AG_RATIO:"A:G Ratio",SGOT_SGPT:"SGOT/SGPT Ratio",CREAT:"Creatinine",UREA:"Urea",BUN:"Blood Urea Nitrogen",
+ URIC:"Uric Acid",CA:"Calcium",PHOS:"Phosphorus",NA:"Sodium",K:"Potassium",CL:"Chloride",BUN_CREAT:"BUN/Creatinine",
+ UREA_CREAT:"Urea/Creatinine",GFR:"GFR",CHOL:"Total Cholesterol",TG:"Triglycerides",HDL:"HDL Cholesterol",
+ LDL:"LDL Cholesterol",VLDL:"VLDL Cholesterol",CHOL_HDL:"Cholesterol/HDL",LDL_HDL:"LDL/HDL",FBS:"Fasting Blood Sugar",
+ PPBS:"Post-Prandial Sugar",RBS:"Random Blood Sugar",HBA1C:"HbA1c",EAG:"Est. Avg Glucose",T3:"T3",T4:"T4",TSH:"TSH",
+ FT3:"Free T3",FT4:"Free T4",B12:"Vitamin B12",VITD:"Vitamin D",IRON:"Serum Iron",TIBC:"TIBC",TSAT:"Transferrin Sat",
+ FERR:"Ferritin",HSCRP:"hsCRP",CRP:"CRP",PSA:"Total PSA",AMYLASE:"Amylase",LIPASE:"Lipase",PROLACTIN:"Prolactin"
+};
+const DISCRETE=new Set(["BASO","EOS","MONO","NEUT","LYMPH","ESR","ABS_BASO","PCT","MPV","PDW","TLC"]);
+const META_HEADERS=["barcode","bill date","patient name","age","gender","test names"];
+
+function canonKey(raw){
+  let s=String(raw).trim().replace(/\.\d+$/,"").replace(/\*/g,"").trim().toLowerCase().replace(/\s+/g," ");
+  return CANON[s]||null;
+}
+
+/* ============================================================
+   IN-BROWSER DB BUILDER  (replaces Python build_master_db.py)
+   Reads each DC file (Excel/CSV rows as array-of-arrays), flattens the
+   wide value/Range layout into records, then computes rarity + analytics.
+   ============================================================ */
+
+/* Flatten one sheet (array-of-arrays incl. header row) into records. */
+function flattenSheet(rows, monthLabel){
+  if(!rows || !rows.length) return [];
+  const header=rows[0].map(h=>String(h==null?"":h).trim());
+  // locate metadata columns
+  const lower=header.map(h=>h.toLowerCase());
+  const idx={};
+  META_HEADERS.forEach(m=>{ const i=lower.indexOf(m); if(i>=0) idx[m]=i; });
+  // value columns = any header that canon-maps to a code, and is NOT a "... range" column
+  const valCols=[];
+  header.forEach((h,i)=>{
+    const hl=h.toLowerCase();
+    if(hl.endsWith("range")||hl.endsWith("unit")||hl.endsWith("method")) return;
+    const code=canonKey(h);
+    if(code) valCols.push({i,code});
+  });
+  const out=[];
+  for(let r=1;r<rows.length;r++){
+    const row=rows[r]; if(!row) continue;
+    const barcode = idx["barcode"]!=null ? String(row[idx["barcode"]]??"").trim() : "";
+    const patient = idx["patient name"]!=null ? String(row[idx["patient name"]]??"").trim() : "";
+    const date = idx["bill date"]!=null ? String(row[idx["bill date"]]??"").trim() : "";
+    const age = idx["age"]!=null ? String(row[idx["age"]]??"").trim() : "";
+    const gender = idx["gender"]!=null ? String(row[idx["gender"]]??"").trim().toLowerCase() : "";
+    const params={};
+    for(const {i,code} of valCols){
+      const num=toNum(row[i]);
+      if(num!=null && !(code in params)) params[code]=num;   // first wins on dup columns
+    }
+    if(Object.keys(params).length===0) continue;  // need at least one numeric value (matches Python builder)
+    out.push({ id:(monthLabel||"DC")+"-"+String(r).padStart(6,"0"),
+      file:monthLabel||"Data", barcode, date, patient, age, gender, params });
+  }
+  return out;
+}
+
+/* Guess a month label from a filename (Jan/February/2026-03 etc). */
+const MONTH_WORDS=[["january","jan"],["february","feb"],["march","mar"],["april","apr"],["may","may"],
+  ["june","jun"],["july","jul"],["august","aug"],["september","sep"],["october","oct"],["november","nov"],["december","dec"]];
+function monthFromName(name){
+  const n=name.toLowerCase();
+  for(const [full,abbr] of MONTH_WORDS){ if(n.includes(full)||new RegExp("\\b"+abbr+"\\b").test(n))
+    return full.charAt(0).toUpperCase()+full.slice(1); }
+  const m=n.match(/20\d{2}[-_\.]?(0[1-9]|1[0-2])/);
+  if(m){ const mm=parseInt(m[1],10); return MONTH_WORDS[mm-1][0].replace(/^./,c=>c.toUpperCase()); }
+  return name.replace(/\.(xlsx|xls|csv)$/i,"").slice(0,18);
+}
+
+/* Compute rarity table + analytics block from a record set. */
+function computeDb(records){
+  const names=Object.assign({},DISPLAY);
+  // rarity: per code -> {n, v:{value:count}}
+  const rarity={}; const paramFreq={};
+  records.forEach(rec=>{
+    for(const code in rec.params){
+      const v=r2(rec.params[code]);
+      (rarity[code]||(rarity[code]={n:0,v:{}}));
+      rarity[code].n++; rarity[code].v[v]=(rarity[code].v[v]||0)+1;
+      paramFreq[code]=(paramFreq[code]||0)+1;
+    }
+  });
+  // analytics: param usage (month-wise), value tables (top60, month + patient spread)
+  const monthsSet=new Set(records.map(r=>r.file));
+  const months=Array.from(monthsSet);
+  const paramMonth={}; const paramTotal={};
+  records.forEach(r=>{ for(const code in r.params){
+    paramTotal[code]=(paramTotal[code]||0)+1;
+    (paramMonth[code]||(paramMonth[code]={}));
+    paramMonth[code][r.file]=(paramMonth[code][r.file]||0)+1;
+  }});
+  const total=records.length;
+  const param_usage=Object.keys(paramTotal).map(code=>({code,total:paramTotal[code],
+    m:paramMonth[code],pct:+(100*paramTotal[code]/total).toFixed(1)})).sort((a,b)=>b.total-a.total);
+
+  const values={}; const continuous={};
+  Object.keys(rarity).forEach(code=>{
+    // build per-value month + patient maps
+    const byMonth={}; const byPat={}; const tot={};
+    records.forEach(r=>{ if(!(code in r.params)) return;
+      const v=r2(r.params[code]);
+      (byMonth[v]||(byMonth[v]={})); byMonth[v][r.file]=(byMonth[v][r.file]||0)+1;
+      (byPat[v]||(byPat[v]=new Set())); if(r.patient) byPat[v].add(r.patient.toUpperCase());
+      tot[v]=(tot[v]||0)+1;
+    });
+    const top=Object.keys(tot).map(v=>({v:+v,c:tot[v],m:byMonth[v],pat:(byPat[v]?byPat[v].size:0)}))
+      .sort((a,b)=>b.c-a.c).slice(0,60);
+    values[code]={n:rarity[code].n, top};
+    // classify continuous vs discrete
+    let isCont;
+    if(DISCRETE.has(code)) isCont=false;
+    else{ const vals=top.map(t=>t.v); const intFrac=vals.length?vals.filter(x=>Number.isInteger(x)).length/vals.length:1;
+      const hasDec=vals.some(x=>!Number.isInteger(x)); isCont=!(intFrac>0.85 && !hasDec); }
+    continuous[code]=isCont;
+  });
+
+  // high-frequency alerts (continuous only)
+  const alerts=[];
+  Object.keys(values).forEach(code=>{
+    if(!continuous[code]) return; const vd=values[code]; if(vd.n<100) return;
+    vd.top.forEach(t=>{ const share=t.c/vd.n;
+      if(share>=0.012 && t.pat>=25){
+        const sev=share>=0.06?"HIGH":(share>=0.03?"MED":"LOW");
+        alerts.push({code,name:names[code]||code,v:t.v,c:t.c,share:+(share*100).toFixed(2),pat:t.pat,m:t.m,sev});
+      }});
+  });
+  alerts.sort((a,b)=>b.share-a.share);
+
+  return { built:new Date().toISOString(), counts:{total}, records, rarity, names,
+    param_freq:paramFreq, analytics:{ total_reports:total, months_present:months,
+      param_usage, values, continuous, alerts } };
+}
+/* ============================================================
+   STATE
+   ============================================================ */
+let DB=null;               // active DC's database (from computeDb)
+let NAMES={}, RARITY={};
+let DCS=[];                // [{key,name,folderId}]
+let ACTIVE=null;          // active DC object
+let MATCHES=[], DECISIONS={}, CURRENT=null;
+let SHOWN=0; const PAGE=10;
+let FILT={sev:"all",status:"all",month:"all",param:"all",q:""};
+let TOKEN=null, GAPI_READY=false, GIS_READY=false, tokenClient=null;
+let CFG={clientId:"",apiKey:""};
+
+/* ============================================================
+   IndexedDB  (config, DC list, per-DC cached db, decisions, uploads)
+   ============================================================ */
+let _db=null;
+function openIDB(){return new Promise((res,rej)=>{
+  const r=indexedDB.open("belife_multidc",1);
+  r.onupgradeneeded=e=>{ const db=e.target.result;
+    ["meta","dcs","dcdb","decisions","uploads"].forEach(s=>{ if(!db.objectStoreNames.contains(s)) db.createObjectStore(s,{keyPath:"key"}); });
+  };
+  r.onsuccess=e=>{_db=e.target.result;res();}; r.onerror=()=>rej(r.error);
+});}
+function idbPut(store,obj){return new Promise((res,rej)=>{const t=_db.transaction(store,"readwrite");t.objectStore(store).put(obj);t.oncomplete=()=>res();t.onerror=()=>rej(t.error);});}
+function idbGet(store,key){return new Promise((res,rej)=>{const t=_db.transaction(store,"readonly");const rq=t.objectStore(store).get(key);rq.onsuccess=()=>res(rq.result||null);rq.onerror=()=>rej(rq.error);});}
+function idbAll(store){return new Promise((res,rej)=>{const t=_db.transaction(store,"readonly");const rq=t.objectStore(store).getAll();rq.onsuccess=()=>res(rq.result||[]);rq.onerror=()=>rej(rq.error);});}
+function idbDel(store,key){return new Promise((res,rej)=>{const t=_db.transaction(store,"readwrite");t.objectStore(store).delete(key);t.oncomplete=()=>res();t.onerror=()=>rej(t.error);});}
+
+/* ============================================================
+   WEIGHTED MATCHER (information-theoretic; identical to single-DC)
+   ============================================================ */
+function bitsFor(code,val){
+  const t=RARITY[code]; if(!t||!t.n) return 0;
+  const c=t.v[r2(val)]||0; if(c<=0) return 0;
+  return -Math.log2(c/t.n);
+}
+function thresholds(nUp){
+  const k=Math.max(1,Math.sqrt(nUp/6));
+  return {k, hi:28*k, med:16*k};
+}
+function runMatch(up){
+  const upCodes=Object.keys(up); const nUp=upCodes.length;
+  if(nUp<2) return [];
+  const {hi,med}=thresholds(nUp);
+  const res=[];
+  for(const rec of DB.records){
+    if(CURRENT && rec.id===CURRENT.id) continue;
+    const shared=[];
+    let score=0, strong=0;
+    for(const code of upCodes){
+      if(!(code in rec.params)) continue;
+      if(r2(rec.params[code])!==r2(up[code])) continue;
+      const b=bitsFor(code,up[code]);
+      shared.push({code,val:up[code],bits:b,strong:b>=6});
+      score+=b; if(b>=6) strong++;
+    }
+    if(shared.length<2) continue;                 // HARD GATE
+    const avg=score/shared.length; if(avg<3) continue;  // quality floor
+    let sev=null;
+    if(score>=hi && strong>=3) sev="HIGH";
+    else if(score>=med && strong>=2) sev="MEDIUM";
+    if(!sev) continue;
+    shared.sort((a,b)=>b.bits-a.bits);
+    res.push({rec,shared,score:+score.toFixed(1),strong,sev,matched:shared.length});
+  }
+  res.sort((a,b)=>b.score-a.score);
+  return res;
+}
+
+/* ============================================================
+   PDF EXTRACTION
+   ============================================================ */
+async function extractPdf(file){
+  const buf=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  let text="";
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const c=await page.getTextContent();
+    text+=" "+c.items.map(i=>i.str).join(" ");
+  }
+  return text.replace(/\s+/g," ");
+}
+const ALIASES=Object.keys(CANON).sort((a,b)=>b.length-a.length);
+function extractParams(text){
+  const t=" "+text.toLowerCase()+" "; const found={};
+  for(const alias of ALIASES){
+    const code=CANON[alias]; if(code in found) continue;
+    let pos=t.indexOf(" "+alias);
+    while(pos>=0){
+      const after=t.slice(pos+alias.length+1, pos+alias.length+60);
+      const m=after.match(/-?\d+(\.\d+)?/);
+      if(m){ const num=toNum(m[0]); if(num!=null){ found[code]=num; break; } }
+      pos=t.indexOf(" "+alias,pos+1);
+    }
+  }
+  return found;
+}
+function guessName(text){
+  const m=text.match(/(?:patient\s*name|name)\s*[:\-]?\s*([A-Z][A-Za-z .]{2,40})/i);
+  return m?m[1].trim().replace(/\s+/g," "):"";
+}
+function guessBarcode(text){
+  const m=text.match(/(?:barcode|sample\s*id|lab\s*no|reg\.?\s*no)\s*[:\-]?\s*([A-Za-z0-9\-\/]{4,20})/i);
+  return m?m[1].trim():"";
+}
+function guessDate(text){
+  const m=text.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/);
+  return m?m[1]:"";
+}
+
+/* ============================================================
+   GOOGLE DRIVE  (GIS OAuth + Drive REST)
+   ============================================================ */
+const SCOPE="https://www.googleapis.com/auth/drive.file";
+function loadCfg(){ try{ const c=JSON.parse(localStorage.getItem("belife_gcfg")||"{}"); CFG.clientId=c.clientId||""; CFG.apiKey=c.apiKey||""; }catch(e){} }
+function saveCfg(){ localStorage.setItem("belife_gcfg",JSON.stringify(CFG)); }
+
+function gapiLoad(){return new Promise(res=>{ gapi.load("client:picker",async()=>{
+  await gapi.client.init({apiKey:CFG.apiKey, discoveryDocs:["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"]});
+  GAPI_READY=true; res();
+});});}
+function initTokenClient(){
+  tokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:CFG.clientId, scope:SCOPE,
+    callback:(resp)=>{ if(resp.error){ toast("Google sign-in failed: "+resp.error); return; }
+      TOKEN=resp.access_token; gapi.client.setToken({access_token:TOKEN});
+      onSignedIn(); }
+  });
+  GIS_READY=true;
+}
+function signIn(){
+  if(!CFG.clientId||!CFG.apiKey){ toast("Add your Client ID and API key first."); showSetup(); return; }
+  if(!GIS_READY||!tokenClient){ toast("Google libraries still loading — try again in a moment."); return; }
+  tokenClient.requestAccessToken({prompt: TOKEN?"":"consent"});
+}
+function signOut(){
+  if(TOKEN && google.accounts.oauth2) google.accounts.oauth2.revoke(TOKEN,()=>{});
+  TOKEN=null; gapi.client && gapi.client.setToken(null);
+  $("#gSignin").style.display="flex"; $("#gSignout").classList.remove("show");
+  $("#uEmail").classList.remove("show"); $("#dcBadge").classList.remove("show");
+  show("setup"); toast("Signed out.");
+}
+async function onSignedIn(){
+  $("#gSignin").style.display="none"; $("#gSignout").classList.add("show");
+  // fetch email for display (best-effort)
+  try{ const r=await fetch("https://www.googleapis.com/oauth2/v3/userinfo",{headers:{Authorization:"Bearer "+TOKEN}});
+    if(r.ok){ const j=await r.json(); $("#uEmail").textContent=j.email||""; $("#uEmail").classList.add("show"); } }catch(e){}
+  await loadDcs(); showDcPicker();
+}
+
+/* Drive REST helpers (use fetch with bearer token) */
+async function driveListFolderFiles(folderId){
+  const q=encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+  const url=`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,size)&pageSize=200`;
+  const r=await fetch(url,{headers:{Authorization:"Bearer "+TOKEN}});
+  if(!r.ok) throw new Error("Drive list failed ("+r.status+")");
+  const j=await r.json(); return j.files||[];
+}
+async function driveDownload(fileId){
+  const url=`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+  const r=await fetch(url,{headers:{Authorization:"Bearer "+TOKEN}});
+  if(!r.ok) throw new Error("Drive download failed ("+r.status+")");
+  return await r.arrayBuffer();
+}
+async function driveUpload(folderId, name, blob, mime){
+  const meta={name, parents:[folderId]};
+  const form=new FormData();
+  form.append("metadata", new Blob([JSON.stringify(meta)],{type:"application/json"}));
+  form.append("file", blob, name);
+  const r=await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name",{
+    method:"POST", headers:{Authorization:"Bearer "+TOKEN}, body:form });
+  if(!r.ok) throw new Error("Drive upload failed ("+r.status+")");
+  return await r.json();
+}
+
+/* Google Picker to choose a folder for a DC */
+function pickFolder(){
+  return new Promise((res)=>{
+    const view=new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+      .setSelectFolderEnabled(true).setMimeTypes("application/vnd.google-apps.folder");
+    const picker=new google.picker.PickerBuilder()
+      .addView(view).setOAuthToken(TOKEN).setDeveloperKey(CFG.apiKey)
+      .setCallback(data=>{ if(data.action===google.picker.Action.PICKED){
+        const f=data.docs[0]; res({id:f.id,name:f.name}); }
+        else if(data.action===google.picker.Action.CANCEL){ res(null); } })
+      .build();
+    picker.setVisible(true);
+  });
+}
+/* ============================================================
+   DC MANAGEMENT
+   ============================================================ */
+function dcKey(name){ return "dc_"+name.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,""); }
+async function loadDcs(){ const rows=await idbAll("dcs"); DCS=rows.map(r=>r.val).sort((a,b)=>a.name.localeCompare(b.name)); }
+async function saveDc(dc){ await idbPut("dcs",{key:dc.key,val:dc}); await loadDcs(); }
+
+function showDcPicker(){ show("dc"); renderDcGrid(); }
+async function renderDcGrid(){
+  const grid=$("#dcGrid"); grid.innerHTML="";
+  for(const dc of DCS){
+    const cached=await idbGet("dcdb",dc.key);
+    const div=document.createElement("div"); div.className="dc-card";
+    div.innerHTML=`${cached?'<span class="cached">cached</span>':''}
+      <div class="ic">🏥</div><h3>${dc.name}</h3>
+      <div class="meta">${cached?`${cached.val.counts.total.toLocaleString()} records · built ${new Date(cached.val.built).toLocaleDateString()}`:'not built yet — click to build'}</div>`;
+    div.onclick=()=>openDc(dc);
+    grid.appendChild(div);
+  }
+  const add=document.createElement("div"); add.className="dc-card add";
+  add.innerHTML=`<div class="ic">➕</div><div><b>Add / link a center</b><div class="meta">pick its Drive folder</div></div>`;
+  add.onclick=addDc; grid.appendChild(add);
+  $("#dcHint").textContent = DCS.length? "Tip: re-open a center anytime — its database is cached locally for speed." :
+    "No centers linked yet. Click “Add / link a center folder” and choose that center's Drive folder.";
+}
+async function addDc(){
+  if(!TOKEN){ toast("Sign in with Google first."); return; }
+  if(!google.picker){ toast("Picker still loading…"); return; }
+  const picked=await pickFolder(); if(!picked) return;
+  let name=prompt("Center name for this folder:", picked.name)||picked.name;
+  const dc={key:dcKey(name), name:name.trim(), folderId:picked.id, folderName:picked.name};
+  await saveDc(dc); renderDcGrid(); toast(`Linked “${dc.name}”.`);
+}
+
+/* Build (or load cached) a DC database, then enter the app */
+async function openDc(dc, forceRebuild){
+  ACTIVE=dc;
+  $("#dcBadgeName").textContent=dc.name; $("#dcBadge").classList.add("show");
+  if(!forceRebuild){
+    const cached=await idbGet("dcdb",dc.key);
+    if(cached){ DB=cached.val; afterDbReady(); return; }
+  }
+  await buildDcFromDrive(dc);
+}
+async function buildDcFromDrive(dc){
+  show("build"); $("#buildBar").style.width="0%"; $("#buildLog").innerHTML="";
+  $("#buildTitle").textContent=`Building “${dc.name}” database`;
+  $("#buildSub").textContent="Reading the center's Drive folder…";
+  const blog=(msg,cls="")=>{ const d=document.createElement("div"); if(cls)d.className=cls; d.innerHTML=msg; $("#buildLog").appendChild(d); $("#buildLog").scrollTop=1e9; };
+  try{
+    blog("▸ Listing files in Drive folder…");
+    const files=await driveListFolderFiles(dc.folderId);
+    const data=files.filter(f=>/\.(xlsx|xls|csv)$/i.test(f.name) || f.mimeType==="text/csv" ||
+      f.mimeType==="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      f.mimeType==="application/vnd.ms-excel");
+    if(!data.length){ blog("✗ No Excel/CSV files found in this folder.","warn");
+      $("#buildSub").textContent="Folder has no data files."; 
+      blog('Add this center\'s monthly Excel/CSV exports to its Drive folder, then rebuild.',"warn");
+      setTimeout(()=>showDcPicker(),50); return; }
+    blog(`✓ Found <b>${data.length}</b> data file(s).`,"ok");
+    let allRecords=[];
+    for(let i=0;i<data.length;i++){
+      const f=data[i];
+      $("#buildBar").style.width=Math.round((i/data.length)*70)+"%";
+      $("#buildSub").textContent=`Parsing ${f.name} (${i+1}/${data.length})…`;
+      blog(`▸ Downloading &amp; parsing <b>${f.name}</b>…`);
+      const buf=await driveDownload(f.id);
+      const wb=XLSX.read(buf,{type:"array"});
+      let fileRecords=[];
+      wb.SheetNames.forEach(sn=>{
+        const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true,defval:null});
+        const monthLabel=monthFromName(f.name);
+        const recs=flattenSheet(rows,monthLabel);
+        fileRecords=fileRecords.concat(recs);
+      });
+      blog(`&nbsp;&nbsp;→ ${fileRecords.length.toLocaleString()} records`,"hi");
+      allRecords=allRecords.concat(fileRecords);
+    }
+    if(!allRecords.length){ blog("✗ Files parsed but no usable records found. Check the export format.","warn");
+      setTimeout(()=>showDcPicker(),50); return; }
+    $("#buildBar").style.width="82%"; $("#buildSub").textContent="Computing rarity weights & analytics…";
+    blog(`▸ Building weighted index over <b>${allRecords.length.toLocaleString()}</b> records…`);
+    DB=computeDb(allRecords);
+    $("#buildBar").style.width="94%";
+    blog(`✓ ${Object.keys(DB.rarity).length} parameters · ${DB.analytics.alerts.length} high-frequency alerts`,"ok");
+    // fold previously uploaded PDFs for this DC back in
+    const ups=(await idbAll("uploads")).filter(u=>u.val.dc===dc.key);
+    ups.forEach(u=>{ DB.records.push({id:u.val.id,file:"Uploaded",barcode:u.val.barcode,date:u.val.date,
+      patient:u.val.patient,age:"",gender:"",params:u.val.params}); });
+    if(ups.length){ DB=computeDb(DB.records); blog(`✓ Re-folded ${ups.length} previously-checked PDF(s).`,"ok"); }
+    await idbPut("dcdb",{key:dc.key,val:DB});
+    $("#buildBar").style.width="100%";
+    blog("✓ Done. Opening center…","ok");
+    setTimeout(afterDbReady,250);
+  }catch(e){
+    blog("✗ "+e.message,"warn");
+    if(/40[13]/.test(e.message)) blog("Authorization issue — try signing out and in again, and confirm the folder is shared with your account.","warn");
+    $("#buildSub").textContent="Build failed.";
+    setTimeout(()=>showDcPicker(),50);
+  }
+}
+
+function afterDbReady(){
+  NAMES=DB.names||{}; RARITY=DB.rarity||{};
+  DECISIONS={}; MATCHES=[]; CURRENT=null;
+  show("app");
+  $("#dropSub").textContent=`Checked against “${ACTIVE.name}” history (${DB.records.length.toLocaleString()} records), then saved into its Drive folder.`;
+  // fill filters
+  fillParamFilter(); fillMonthFilters(); fillAnalyticsFilters();
+  // load decisions for this DC
+  idbAll("decisions").then(ds=>{ ds.filter(d=>d.val.dc===ACTIVE.key).forEach(d=>DECISIONS[d.val.dckey]=d.val); });
+  // reset detection view
+  $("#results").innerHTML=""; $("#tiles").classList.remove("show");
+  $("#toolbar").classList.remove("show"); $("#proc").style.display="none";
+  switchView("detect");
+}
+
+/* ============================================================
+   DETECTION FLOW
+   ============================================================ */
+function plog(msg,cls=""){ const p=$("#proc"); p.style.display="block";
+  const d=document.createElement("div"); if(cls)d.className=cls; d.innerHTML=msg; p.appendChild(d); p.scrollTop=1e9; }
+
+async function handlePdf(file){
+  $("#proc").innerHTML=""; $("#proc").style.display="block";
+  plog(`▸ Reading <b>${file.name}</b>…`);
+  let text;
+  try{ text=await extractPdf(file); }catch(e){ plog("✗ Could not read PDF: "+e.message,"warn"); return; }
+  if(!text || text.length<40){ plog("✗ No text layer found (scanned image?). Run OCR first.","warn"); return; }
+  const up=extractParams(text);
+  const patient=guessName(text), barcode=guessBarcode(text), date=guessDate(text);
+  plog(`✓ Extracted <b>${Object.keys(up).length}</b> parameter values.`,"ok");
+  if(Object.keys(up).length<2){ plog("✗ Fewer than 2 readable parameters — cannot check duplicates.","warn"); return; }
+
+  CURRENT={ id:"UP-"+Date.now(), patient, barcode, date, fileName:file.name };
+  plog(`▸ Comparing against “${ACTIVE.name}” history…`);
+  MATCHES=runMatch(up);
+  const hi=MATCHES.filter(m=>m.sev==="HIGH").length, med=MATCHES.length-hi;
+  plog(`✓ <b>${MATCHES.length}</b> suspicious match(es): <b>${hi}</b> high, <b>${med}</b> medium.`, MATCHES.length?"warn":"ok");
+
+  CURRENT.commonality=analyzeUploadCommonality(up);
+  const hotN=CURRENT.commonality.filter(c=>c.level!=="normal").length;
+  if(hotN) plog(`▸ ${hotN} of this report's values are unusually common in this center's data.`,"warn");
+
+  // preview link
+  const dataUrl=await fileToDataUrl(file);
+  $("#pdfPrev").innerHTML=`📎 <a href="${dataUrl}" target="_blank" download="${file.name}">${file.name}</a> · preview`;
+
+  // ---- save into this DC: Drive folder + local cache + in-memory DB ----
+  const blob=file;
+  let driveOk=false;
+  if(TOKEN && ACTIVE.folderId){
+    try{ plog(`▸ Uploading report to “${ACTIVE.name}” Drive folder…`,"drv");
+      const safe=(patient?patient.replace(/[^A-Za-z0-9]+/g,"_")+"_":"")+(barcode||Date.now())+".pdf";
+      await driveUpload(ACTIVE.folderId, safe, blob, "application/pdf");
+      driveOk=true; plog(`✓ Saved to Drive as <b>${safe}</b>.`,"drv");
+    }catch(e){ plog("✗ Drive upload failed: "+e.message+" (kept locally).","warn"); }
+  } else { plog("• Not signed in to Drive — report kept locally only.","warn"); }
+
+  // fold into this DC's DB so future checks see it
+  await idbPut("uploads",{key:CURRENT.id, val:{id:CURRENT.id,dc:ACTIVE.key,patient,barcode,date,params:up,driveOk}});
+  DB.records.push({id:CURRENT.id,file:"Uploaded",barcode,date,patient,age:"",gender:"",params:up});
+  DB=computeDb(DB.records);          // refresh rarity/analytics with the new report
+  NAMES=DB.names; RARITY=DB.rarity;
+  await idbPut("dcdb",{key:ACTIVE.key,val:DB});
+  fillParamFilter(); fillMonthFilters(); fillAnalyticsFilters();
+
+  render(); $("#toolbar").classList.add("show"); $("#tiles").classList.add("show");
+  if(driveOk) toast("Report checked and saved to Drive.");
+}
+function fileToDataUrl(file){return new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(file);});}
+
+/* analytics-connected commonality of an uploaded report */
+function analyzeUploadCommonality(up){
+  const A=DB.analytics; const out=[];
+  for(const code in up){
+    const vd=A.values[code]; if(!vd) continue;
+    const v=r2(up[code]); const hit=vd.top.find(t=>r2(t.v)===v);
+    const share=hit?hit.c/vd.n:0; const isCont=A.continuous[code];
+    let level="normal";
+    if(isCont){ if(share>=0.06)level="veryhot"; else if(share>=0.03)level="hot"; else if(share>=0.015)level="mild"; }
+    out.push({code,name:NAMES[code]||code,value:v,count:hit?hit.c:0,share:+(share*100).toFixed(2),
+      patients:hit?hit.pat:0,months:hit?hit.m:{},level,continuous:isCont});
+  }
+  out.sort((a,b)=>b.share-a.share); return out;
+}
+function commonalityPanel(){
+  const el=document.createElement("div"); el.className="common-panel";
+  const c=CURRENT.commonality; const hot=c.filter(x=>x.level==="veryhot"||x.level==="hot");
+  const top=c.slice(0,12);
+  el.innerHTML=`<h3>📊 How common are this report's values?</h3>
+    <div class="csub">Checked against “${ACTIVE.name}” (${DB.records.length.toLocaleString()} reports).
+    ${hot.length?`<b style="color:var(--red)">${hot.length} value(s) repeat unusually often</b> — possible templated/copied result.`:`No value repeats unusually often.`}</div>
+    <div class="cp-grid">${top.map(x=>{
+      const cls=x.level==="veryhot"?"veryhot":(x.level==="hot"?"hot":"");
+      const tag=x.continuous?`<b>${x.share}%</b> of reports · ${x.patients} patients`:`count metric (clusters naturally)`;
+      return `<div class="cp-item ${cls}"><div class="pp">${x.name}</div><div class="vv">${fmt(x.value)}</div>
+        <div class="ff">${x.count?tag:"first time seen"}</div></div>`;
+    }).join("")}</div>`;
+  return el;
+}
+
+/* ---- match rendering ---- */
+function decisionKey(m){return CURRENT.id+"::"+m.rec.id;}
+function filtered(){
+  return MATCHES.filter(m=>{
+    if(FILT.sev!=="all"&&m.sev!==FILT.sev) return false;
+    const d=DECISIONS[decisionKey(m)]; const st=d?d.status:"pending";
+    if(FILT.status!=="all"&&st!==FILT.status) return false;
+    if(FILT.month!=="all"&&m.rec.file!==FILT.month) return false;
+    if(FILT.param!=="all"&&!m.shared.some(s=>s.code===FILT.param)) return false;
+    if(FILT.q){const q=FILT.q.toLowerCase();
+      if(!((m.rec.patient||"").toLowerCase().includes(q)||(m.rec.barcode||"").toLowerCase().includes(q))) return false;}
+    return true;
+  });
+}
+function render(){
+  const list=filtered();
+  $("#tTotal").textContent=MATCHES.length;
+  $("#tHigh").textContent=MATCHES.filter(m=>m.sev==="HIGH").length;
+  $("#tMed").textContent=MATCHES.filter(m=>m.sev==="MEDIUM").length;
+  $("#tApproved").textContent=Object.values(DECISIONS).filter(d=>d.status==="approved"&&d.upload===CURRENT.id).length;
+  const box=$("#results"); box.innerHTML="";
+  if(CURRENT&&CURRENT.commonality) box.appendChild(commonalityPanel());
+  if(MATCHES.length===0){ const c=document.createElement("div"); c.className="card";
+    c.innerHTML=`<div class="empty"><div class="ic">✓</div><h3 style="margin:12px 0 4px">No suspicious matches</h3>
+      <p>No record in “${ACTIVE.name}” shares 2+ distinctive parameter values with this report.</p></div>`;
+    box.appendChild(c); $("#loadMore").style.display="none"; return; }
+  if(list.length===0){ const c=document.createElement("div"); c.className="card";
+    c.innerHTML=`<div class="empty"><div class="ic">🗂</div><p>No matches under the current filters.</p></div>`;
+    box.appendChild(c); $("#loadMore").style.display="none"; return; }
+  const slice=list.slice(0,SHOWN||PAGE);
+  slice.forEach(m=>box.appendChild(matchCard(m)));
+  $("#loadMore").style.display=list.length>slice.length?"block":"none";
+}
+function matchCard(m){
+  const r=m.rec, key=decisionKey(m);
+  const dec=DECISIONS[key]; const st=dec?dec.status:"pending";
+  const el=document.createElement("div"); el.className="match";
+  const upMap={}; m.shared.forEach(s=>upMap[s.code]=s);
+  const rowsHtml=m.shared.map(s=>`<tr class="mt"><td>${NAMES[s.code]||s.code}</td>
+    <td class="vmatch">${fmt(s.val)}</td><td class="vmatch">${fmt(r.params[s.code])}</td>
+    <td><span class="bits">${s.bits.toFixed(1)} bits</span> ${s.strong?'<span class="strong-dot">●</span>':''}</td></tr>`).join("");
+  el.innerHTML=`
+    <div class="mhead">
+      <span class="sevtag sev-${m.sev}">${m.sev}</span>
+      <div><div class="mtitle">${r.patient||"(no name)"} ${r.barcode?`· <span style="color:var(--mute)">${r.barcode}</span>`:""}</div>
+        <div class="msub">${r.file} · ${r.date||"no date"} · ${m.matched} matched, ${m.strong} strong</div></div>
+      <div class="mmeta">
+        <div class="k"><b>${m.score}</b><span>bit score</span></div>
+        <span class="status-pill st-${st}">${st}</span>
+        <span class="chev">▶</span>
+      </div>
+    </div>
+    <div class="mbody">
+      <div class="cmp">
+        <div class="col"><h4>Uploaded report</h4><div class="pn">${CURRENT.patient||"(no name)"}</div>
+          <div class="pmeta">${CURRENT.barcode||""} ${CURRENT.date?"· "+CURRENT.date:""} · ${CURRENT.fileName}</div></div>
+        <div class="col"><h4>Historical record · ${r.file}</h4><div class="pn">${r.patient||"(no name)"}</div>
+          <div class="pmeta">${r.barcode||""} ${r.date?"· "+r.date:""}</div></div>
+      </div>
+      <div style="padding:0 18px 14px"><table class="pt">
+        <thead><tr><th>Matched parameter</th><th>Uploaded</th><th>Historical</th><th>Distinctiveness</th></tr></thead>
+        <tbody>${rowsHtml}</tbody></table></div>
+      <div class="actions">
+        <span style="font-size:12px;color:var(--mute)">Mark this comparison:</span>
+        <div class="sp"></div>
+        <button class="btn ok sm" data-act="approve">✓ Not a duplicate</button>
+        <button class="btn no sm" data-act="reject">⚑ Confirm duplicate</button>
+      </div>
+      <div class="remark" id="rm_${key.replace(/[^a-z0-9]/gi,'')}"><textarea placeholder="Reason / remark (optional)…"></textarea>
+        <div style="margin-top:8px"><button class="btn sm" data-act="saveRemark">Save remark</button></div></div>
+    </div>`;
+  el.querySelector(".mhead").onclick=()=>el.classList.toggle("open");
+  el.querySelectorAll("[data-act]").forEach(b=>b.onclick=ev=>{ev.stopPropagation();
+    handleDecision(m,key,b.dataset.act,el);});
+  return el;
+}
+async function handleDecision(m,key,act,el){
+  const rmBox=el.querySelector(".remark");
+  if(act==="approve"||act==="reject"){
+    const status=act==="approve"?"approved":"rejected";
+    const remark=rmBox.querySelector("textarea").value.trim();
+    const rec={key, dckey:key, dc:ACTIVE.key, upload:CURRENT.id, recId:m.rec.id, status, remark, at:Date.now()};
+    DECISIONS[key]=rec; await idbPut("decisions",{key:ACTIVE.key+"|"+key,val:rec});
+    if(status==="rejected") rmBox.classList.add("show");
+    render();
+  } else if(act==="saveRemark"){
+    const remark=rmBox.querySelector("textarea").value.trim();
+    if(DECISIONS[key]){ DECISIONS[key].remark=remark; await idbPut("decisions",{key:ACTIVE.key+"|"+key,val:DECISIONS[key]}); toast("Remark saved."); }
+  }
+}
+/* ============================================================
+   FILTERS (detection)
+   ============================================================ */
+function fillParamFilter(){
+  const codes=new Set(); MATCHES.forEach(m=>m.shared.forEach(s=>codes.add(s.code)));
+  const sel=$("#fltParam"); const cur=sel.value;
+  sel.innerHTML='<option value="all">All parameters</option>'+
+    Array.from(codes).map(c=>`<option value="${c}">${NAMES[c]||c}</option>`).join("");
+  if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+function fillMonthFilters(){
+  const months=DB.analytics.months_present.slice();
+  if(DB.records.some(r=>r.file==="Uploaded")&&!months.includes("Uploaded")) months.push("Uploaded");
+  $("#fltMonth").innerHTML='<option value="all">All months</option>'+months.map(m=>`<option value="${m}">${m}</option>`).join("");
+  // analytics month seg
+  const seg=$("#anMonth");
+  seg.innerHTML='<button data-m="all" class="on">All months</button>'+
+    months.map(m=>`<button data-m="${m}">${m.length>5?m.slice(0,3):m}</button>`).join("");
+  seg.querySelectorAll("button").forEach(b=>b.onclick=()=>{ seg.querySelectorAll("button").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on"); AN.month=b.dataset.m; renderAnalytics(); });
+}
+
+/* ============================================================
+   ANALYTICS
+   ============================================================ */
+let AN={month:"all",param:"all",type:"continuous",top:25,valq:""};
+let chartParams=null, chartTrend=null, LIVE=null;
+function liveAnalytics(){ // active DC db already includes uploaded records folded in
+  const A=DB.analytics;
+  return { totalReports:DB.records.length, usage:A.param_usage, values:A.values,
+    continuous:A.continuous, alerts:A.alerts };
+}
+function monthCount(mObj,month){ if(!mObj) return 0;
+  if(month==="all") return Object.values(mObj).reduce((a,b)=>a+b,0); return mObj[month]||0; }
+function fillAnalyticsFilters(){
+  LIVE=liveAnalytics();
+  $("#anParam").innerHTML='<option value="all">All parameters</option>'+
+    LIVE.usage.map(p=>`<option value="${p.code}">${NAMES[p.code]||p.code}</option>`).join("");
+}
+function renderAnalytics(){ if(!LIVE) LIVE=liveAnalytics();
+  renderAlerts(); renderParamChart(); renderParamTable(); renderValuesTable(); renderTrend(); renderHeatmap(); }
+
+function renderAlerts(){
+  const box=$("#anAlerts"); const m=AN.month;
+  let list=LIVE.alerts.filter(a=>{
+    if(AN.param!=="all"&&a.code!==AN.param) return false;
+    if(AN.valq&&!String(a.v).includes(AN.valq)) return false;
+    if(m!=="all"&&!(a.m&&a.m[m])) return false; return true;
+  }).slice().sort((x,y)=>y.share-x.share).slice(0,18);
+  $("#anAlertsSub").textContent=`${list.length} shown · ${LIVE.alerts.length} total`;
+  if(!list.length){ box.innerHTML=`<div style="color:var(--mute);font-size:13px">No high-frequency alerts under current filters.</div>`; return; }
+  box.innerHTML=list.map(a=>{ const mtxt=Object.entries(a.m).map(([k,v])=>`${k.slice(0,3)} ${v}`).join(" · ");
+    return `<div class="alert ${a.sev}"><span class="sevb">${a.sev}</span><div class="pn">${a.name}</div>
+      <div class="bigv">${fmt(a.v)}</div><div class="meta"><b>${a.share}%</b> · ${a.pat} patients<br>
+      <span class="mini-month">${mtxt}</span></div></div>`; }).join("");
+}
+function passType(code){ if(AN.type==="continuous") return LIVE.continuous[code];
+  if(AN.type==="discrete") return !LIVE.continuous[code]; return true; }
+function renderParamChart(){
+  const m=AN.month;
+  let arr=LIVE.usage.filter(p=>(AN.param==="all"||p.code===AN.param)&&passType(p.code))
+    .map(p=>({name:NAMES[p.code]||p.code,val:monthCount(p.m,m)})).filter(p=>p.val>0)
+    .sort((a,b)=>b.val-a.val).slice(0,20);
+  $("#anParamChartSub").textContent=m==="all"?"all months":m;
+  if(chartParams) chartParams.destroy();
+  chartParams=new Chart($("#chartParams"),{type:"bar",
+    data:{labels:arr.map(a=>a.name),datasets:[{data:arr.map(a=>a.val),backgroundColor:"#00B4CC",borderRadius:4,maxBarThickness:22}]},
+    options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>` ${c.parsed.x.toLocaleString()} reports`}}},
+      scales:{x:{ticks:{font:{size:10}}},y:{ticks:{font:{size:11}}}}}});
+}
+function renderParamTable(){
+  const arr=LIVE.usage.filter(p=>(AN.param==="all"||p.code===AN.param)&&passType(p.code));
+  const maxPct=Math.max(...arr.map(p=>p.pct),1);
+  const months=DB.analytics.months_present;
+  const head=`<thead><tr><th>Parameter</th><th>Total</th>${months.map(mo=>`<th>${mo.slice(0,3)}</th>`).join("")}<th>Up</th><th>% usage</th></tr></thead>`;
+  $("#tblParams").innerHTML=head+`<tbody>${arr.map(p=>`<tr>
+    <td>${NAMES[p.code]||p.code}${LIVE.continuous[p.code]?"":' <span style="color:var(--mute);font-size:10px">·count</span>'}</td>
+    <td><b>${p.total.toLocaleString()}</b></td>${months.map(mo=>`<td>${(p.m[mo]||0).toLocaleString()}</td>`).join("")}
+    <td>${(p.m.Uploaded||0).toLocaleString()}</td>
+    <td><span class="pct-bar" style="width:${(p.pct/maxPct*60).toFixed(0)}px"></span>${p.pct}%</td></tr>`).join("")}</tbody>`;
+}
+function valueRows(){
+  const m=AN.month; const rows=[];
+  for(const code in LIVE.values){
+    if(AN.param!=="all"&&code!==AN.param) continue; if(!passType(code)) continue;
+    const vd=LIVE.values[code];
+    vd.top.forEach(t=>{ if(AN.valq&&!String(t.v).includes(AN.valq)) return;
+      const cnt=m==="all"?t.c:(t.m[m]||0); if(cnt<=0) return;
+      rows.push({name:NAMES[code]||code,v:t.v,c:cnt,share:+(100*cnt/vd.n).toFixed(2),pat:t.pat,m:t.m,cont:LIVE.continuous[code]});
+    });
+  }
+  rows.sort((a,b)=>b.c-a.c); return rows.slice(0,AN.top);
+}
+function renderValuesTable(){
+  const rows=valueRows();
+  $("#anValSub").textContent=`Top ${AN.top} · ${AN.month==="all"?"all months":AN.month}`;
+  $("#tblValues").innerHTML=`<thead><tr><th>Parameter</th><th>Value</th><th>Repeats</th><th>% of param</th><th>Patients</th><th>Months</th></tr></thead>
+    <tbody>${rows.map(r=>{ const mtxt=Object.entries(r.m).map(([k,v])=>`<span class="mini-month">${k.slice(0,3)}:${v}</span>`).join(" ");
+      const hot=r.cont&&r.share>=6?'style="background:var(--red-bg)"':(r.cont&&r.share>=3?'style="background:var(--amber-bg)"':"");
+      return `<tr ${hot}><td>${r.name}</td><td><span class="vchip">${fmt(r.v)}</span></td>
+        <td><b>${r.c.toLocaleString()}</b></td><td>${r.share}%</td><td>${r.pat.toLocaleString()}</td><td>${mtxt}</td></tr>`;
+    }).join("")}</tbody>`;
+}
+function renderTrend(){
+  let code=AN.param!=="all"?AN.param:(LIVE.usage.find(p=>LIVE.continuous[p.code])||{}).code;
+  if(chartTrend) chartTrend.destroy();
+  if(!code||!LIVE.values[code]){ $("#anTrendSub").textContent="No parameter selected."; return; }
+  $("#anTrendSub").textContent=`${NAMES[code]||code} — top 6 values across months`;
+  const vd=LIVE.values[code]; const topVals=vd.top.slice(0,6);
+  const months=DB.analytics.months_present.concat(DB.records.some(r=>r.file==="Uploaded")?["Uploaded"]:[]);
+  const colors=["#00B4CC","#E91E8C","#E8870C","#1F9D6B","#6C5CE7","#D7263D"];
+  const ds=topVals.map((t,i)=>({label:fmt(t.v),data:months.map(mn=>(t.m&&t.m[mn])||0),
+    borderColor:colors[i%6],backgroundColor:colors[i%6]+"22",tension:.3,borderWidth:2,pointRadius:3,fill:false}));
+  chartTrend=new Chart($("#chartTrend"),{type:"line",data:{labels:months,datasets:ds},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom",labels:{font:{size:11},boxWidth:14}}},
+      scales:{y:{title:{display:true,text:"reports with this value"},ticks:{font:{size:10}}}}}});
+}
+function renderHeatmap(){
+  const box=$("#heatmap");
+  const params=LIVE.usage.filter(p=>LIVE.continuous[p.code]&&LIVE.values[p.code]&&(AN.param==="all"||p.code===AN.param)).slice(0,12);
+  const COLS=8;
+  let html=`<div class="hm-head">${Array.from({length:COLS},(_,i)=>`<div class="hm-hcell">#${i+1}</div>`).join("")}</div>`;
+  params.forEach(p=>{ const vd=LIVE.values[p.code];
+    const cells=vd.top.slice(0,COLS).map(t=>{ const share=t.c/vd.n; let bg,lite=false;
+      if(share>=0.06)bg="#D7263D"; else if(share>=0.04)bg="#E8870C"; else if(share>=0.025)bg="#F0A93F";
+      else if(share>=0.015)bg="#5FBFD0"; else {bg="#E3F1F4";lite=true;}
+      return `<div class="hm-cell ${lite?'lite':''}" style="background:${bg}"
+        title="${NAMES[p.code]||p.code} = ${fmt(t.v)} · ${t.c} (${(share*100).toFixed(1)}%)">${fmt(t.v)}</div>`; }).join("");
+    html+=`<div class="hm-row"><div class="hm-lab">${NAMES[p.code]||p.code}</div>${cells}</div>`; });
+  box.innerHTML=html;
+}
+
+/* ============================================================
+   EVENT WIRING
+   ============================================================ */
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2600); }
+function show(stage){ // setup | dc | build | app
+  $("#setupCard").style.display=stage==="setup"?"block":"none";
+  $("#dcStage").style.display=stage==="dc"?"block":"none";
+  $("#buildPanel").style.display=stage==="build"?"block":"none";
+  $("#app").style.display=stage==="app"?"block":"none";
+}
+function showSetup(){ show("setup"); }
+function switchView(v){
+  $("#viewtabs").querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.view===v));
+  $("#view-detect").style.display=v==="detect"?"block":"none";
+  $("#view-analytics").style.display=v==="analytics"?"block":"none";
+  if(v==="analytics"){ fillAnalyticsFilters(); renderAnalytics(); }
+}
+
+/* config save/clear */
+$("#cfgSave").onclick=()=>{ CFG.clientId=$("#cfgClient").value.trim(); CFG.apiKey=$("#cfgApiKey").value.trim();
+  if(!CFG.clientId||!CFG.apiKey){ toast("Enter both the Client ID and API key."); return; }
+  saveCfg(); toast("Saved. Initializing Google…"); bootGoogle(true); };
+$("#cfgClear").onclick=()=>{ localStorage.removeItem("belife_gcfg"); CFG={clientId:"",apiKey:""};
+  $("#cfgClient").value=""; $("#cfgApiKey").value=""; toast("Cleared saved keys."); };
+
+/* google sign-in/out */
+$("#gSignin").onclick=signIn;
+$("#gSignout").onclick=signOut;
+
+/* dc picker */
+$("#addDcBtn").onclick=addDc;
+$("#backToDc").onclick=()=>{ showDcPicker(); };
+
+/* detection interactions */
+$("#pickBtn").onclick=()=>$("#pdfFile").click();
+$("#drop").onclick=e=>{ if(e.target.closest("button")||e.target.closest("a")) return; $("#pdfFile").click(); };
+$("#pdfFile").onchange=e=>{ if(e.target.files[0]) handlePdf(e.target.files[0]); };
+const drop=$("#drop");
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("hot");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("hot");}));
+drop.addEventListener("drop",e=>{const f=e.dataTransfer.files[0]; if(f) handlePdf(f);});
+$("#newBtn").onclick=()=>{ CURRENT=null; MATCHES=[]; $("#results").innerHTML=""; $("#pdfPrev").innerHTML="";
+  $("#proc").style.display="none"; $("#toolbar").classList.remove("show"); $("#tiles").classList.remove("show"); };
+$("#loadMoreBtn").onclick=()=>{ SHOWN=(SHOWN||PAGE)+PAGE; render(); };
+
+/* detection filters */
+$("#segSev").onclick=e=>{ if(e.target.dataset.sev){ $("#segSev").querySelectorAll("button").forEach(b=>b.classList.remove("on"));
+  e.target.classList.add("on"); FILT.sev=e.target.dataset.sev; SHOWN=0; render(); } };
+$("#segStatus").onclick=e=>{ if(e.target.dataset.st){ $("#segStatus").querySelectorAll("button").forEach(b=>b.classList.remove("on"));
+  e.target.classList.add("on"); FILT.status=e.target.dataset.st; SHOWN=0; render(); } };
+$("#fltMonth").onchange=e=>{ FILT.month=e.target.value; SHOWN=0; render(); };
+$("#fltParam").onchange=e=>{ FILT.param=e.target.value; SHOWN=0; render(); };
+$("#searchBox").oninput=e=>{ FILT.q=e.target.value.trim(); SHOWN=0; render(); };
+
+/* detection export */
+$("#exportBtn").onclick=()=>{
+  if(!MATCHES.length){ toast("Nothing to export yet."); return; }
+  const rows=MATCHES.map(m=>{ const d=DECISIONS[decisionKey(m)];
+    return {Center:ACTIVE.name, "Uploaded patient":CURRENT.patient, "Uploaded barcode":CURRENT.barcode,
+      "Matched patient":m.rec.patient, "Matched barcode":m.rec.barcode, Month:m.rec.file, Date:m.rec.date,
+      Severity:m.sev, "Bit score":m.score, "Matched params":m.matched, Strong:m.strong,
+      Status:d?d.status:"pending", Remark:d?(d.remark||""):"",
+      "Matched values":m.shared.map(s=>(NAMES[s.code]||s.code)+"="+fmt(s.val)).join("; ")}; });
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),"Matches");
+  XLSX.writeFile(wb,`BeLife_${ACTIVE.name.replace(/[^A-Za-z0-9]+/g,"_")}_duplicates.xlsx`);
+};
+
+/* view switcher */
+$("#viewtabs").onclick=e=>{ if(e.target.dataset.view) switchView(e.target.dataset.view); };
+
+/* analytics filters */
+$("#anParam").onchange=e=>{ AN.param=e.target.value; renderAnalytics(); };
+$("#anType").onchange=e=>{ AN.type=e.target.value; renderAnalytics(); };
+$("#anTop").onchange=e=>{ AN.top=+e.target.value; renderValuesTable(); };
+$("#anValSearch").oninput=e=>{ AN.valq=e.target.value.trim(); renderAlerts(); renderValuesTable(); };
+
+/* analytics exports */
+$("#anExportXlsx").onclick=()=>{
+  const wb=XLSX.utils.book_new();
+  const pu=LIVE.usage.map(p=>({Parameter:NAMES[p.code]||p.code,Code:p.code,Total:p.total,
+    ...Object.fromEntries(DB.analytics.months_present.map(mo=>[mo,p.m[mo]||0])),Uploaded:p.m.Uploaded||0,
+    "Pct":p.pct,Type:LIVE.continuous[p.code]?"continuous":"count"}));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(pu),"Parameter Usage");
+  const allRows=[]; for(const code in LIVE.values){const vd=LIVE.values[code];
+    vd.top.forEach(t=>allRows.push({Parameter:NAMES[code]||code,Value:t.v,Repeats:t.c,
+      "Pct of param":+(100*t.c/vd.n).toFixed(2),Patients:t.pat,Type:LIVE.continuous[code]?"continuous":"count"}));}
+  allRows.sort((a,b)=>b.Repeats-a.Repeats);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(allRows.slice(0,300)),"Repeated Values");
+  const al=LIVE.alerts.map(a=>({Parameter:a.name,Value:a.v,Repeats:a.c,Pct:a.share,Patients:a.pat,Severity:a.sev}));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(al),"HF Alerts");
+  XLSX.writeFile(wb,`BeLife_${ACTIVE.name.replace(/[^A-Za-z0-9]+/g,"_")}_analytics.xlsx`);
+};
+$("#anExportPdf").onclick=()=>{
+  const {jsPDF}=window.jspdf; const doc=new jsPDF({orientation:"landscape"});
+  doc.setFontSize(15); doc.text(`BeLife — ${ACTIVE.name} — Common Parameter & Value Analytics`,14,14);
+  doc.setFontSize(9); doc.setTextColor(120);
+  doc.text(`Records: ${LIVE.totalReports.toLocaleString()} · Generated ${new Date().toLocaleString("en-GB")}`,14,20);
+  doc.autoTable({startY:25,head:[["Parameter","Total","%"]],
+    body:LIVE.usage.slice(0,25).map(p=>[NAMES[p.code]||p.code,p.total,p.pct+"%"]),
+    styles:{fontSize:8},headStyles:{fillColor:[14,27,42]},theme:"striped",margin:{left:14},tableWidth:90});
+  doc.autoTable({startY:25,head:[["Parameter","Value","Repeats","%","Pat","Sev"]],
+    body:LIVE.alerts.slice(0,25).map(a=>[a.name,fmt(a.v),a.c,a.share+"%",a.pat,a.sev]),
+    styles:{fontSize:8},headStyles:{fillColor:[216,38,61]},theme:"striped",margin:{left:115},tableWidth:165});
+  doc.save(`BeLife_${ACTIVE.name.replace(/[^A-Za-z0-9]+/g,"_")}_analytics.pdf`);
+};
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+function gisAndGapiPresent(){ return (typeof google!=="undefined" && google.accounts && google.accounts.oauth2) && (typeof gapi!=="undefined"); }
+async function bootGoogle(afterSave){
+  loadCfg();
+  $("#cfgClient").value=CFG.clientId||""; $("#cfgApiKey").value=CFG.apiKey||"";
+  if(!CFG.clientId||!CFG.apiKey){ show("setup"); return; }
+  // wait until the external libs are present
+  let tries=0;
+  while(!gisAndGapiPresent() && tries<40){ await new Promise(r=>setTimeout(r,150)); tries++; }
+  if(!gisAndGapiPresent()){ toast("Could not load Google libraries (check network)."); show("setup"); return; }
+  try{
+    if(!GAPI_READY) await gapiLoad();
+    if(!GIS_READY) initTokenClient();
+    show("setup");                       // stay on setup until user clicks sign-in
+    if(afterSave){ toast("Google ready — click “Sign in with Google”."); }
+    $("#gSignin").style.display="flex";
+  }catch(e){ toast("Google init failed: "+e.message); show("setup"); }
+}
+async function init(){
+  await openIDB(); loadCfg();
+  $("#cfgClient").value=CFG.clientId||""; $("#cfgApiKey").value=CFG.apiKey||"";
+  show("setup");
+  await bootGoogle(false);
+}
+init();
+
+</script>
+</body>
+</html>
