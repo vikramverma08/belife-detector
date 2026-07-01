@@ -729,7 +729,7 @@ function guessDate(text){
 /* ============================================================
    GOOGLE DRIVE  (GIS OAuth + Drive REST)
    ============================================================ */
-const SCOPE="https://www.googleapis.com/auth/drive.file";
+const SCOPE="https://www.googleapis.com/auth/drive";
 function loadCfg(){ try{ const c=JSON.parse(localStorage.getItem("belife_gcfg")||"{}"); CFG.clientId=c.clientId||""; CFG.apiKey=c.apiKey||""; }catch(e){} }
 function saveCfg(){ localStorage.setItem("belife_gcfg",JSON.stringify(CFG)); }
 
