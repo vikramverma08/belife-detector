@@ -699,16 +699,33 @@ async function extractPdf(file){
   return text.replace(/\s+/g," ");
 }
 const ALIASES=Object.keys(CANON).sort((a,b)=>b.length-a.length);
+const STRICT_ALIASES=new Set(["ast","alt","total","direct","indirect","hb","hct","crp","bun","ggt","ldl","hdl","vldl","tg","ca","na","k","cl","t3","t4","tsh","alp","rbc","tlc","plt","iron","psa","gfr","b12","eag","mcv","mch","mchc","urea","albumin","globulin","cholesterol","creatinine","potassium","sodium","chloride","calcium","ferritin","tibc","prolactin"]);
 function extractParams(text){
   const t=" "+text.toLowerCase()+" "; const found={};
   for(const alias of ALIASES){
     const code=CANON[alias]; if(code in found) continue;
-    let pos=t.indexOf(" "+alias);
-    while(pos>=0){
-      const after=t.slice(pos+alias.length+1, pos+alias.length+60);
-      const m=after.match(/-?\d+(\.\d+)?/);
+    const strict=STRICT_ALIASES.has(alias);
+    let frm=0;
+    while(true){
+      const pos=t.indexOf(alias,frm);
+      if(pos<0) break;
+      frm=pos+1;
+      const before=t[pos-1]||" ";
+      const afterCh=t[pos+alias.length]||" ";
+      const bb=/[^a-z0-9]/.test(before);
+      const ba=/[^a-z0-9]/.test(afterCh);
+      if(!bb||(strict&&!ba)) continue;
+      let after=t.slice(pos+alias.length, pos+alias.length+140);
+      // Skip a "method : ..." description block (may contain stray digits like "pyridoxal 5 phosp")
+      const mi=after.indexOf("method");
+      if(mi!==-1 && mi<40){
+        let seg=after.slice(mi).replace(/^method\s*:\s*/,"");
+        // drop leading method words and lone digits that are part of the phrase (e.g. "5 phosp")
+        seg=seg.replace(/^([a-z]+|\d+(?=\s+[a-z])|\s|,|\(|\)|\/|-)+/i,"");
+        after=seg;
+      }
+      const m=after.match(/-?\d+(?:\.\d+)?/);
       if(m){ const num=toNum(m[0]); if(num!=null){ found[code]=num; break; } }
-      pos=t.indexOf(" "+alias,pos+1);
     }
   }
   return found;
